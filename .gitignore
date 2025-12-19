@@ -1,0 +1,16 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# ML / self-play data
+data/*.pkl
+data/**/*.pkl
+
+# model checkpoints (¿ÉÑ¡)
+*.pt
+*.pth
+*.ckpt
+
+# logs
+logs/

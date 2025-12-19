@@ -1,0 +1,41 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <title>Amazons</title>
+    <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+    <h1>Amazons</h1>
+
+    <div class="toolbar">
+        <button id="resetBtn">Reset</button>
+        <button id="undoBtn">Undo</button>
+        <button id="clearBtn">Clear</button>
+
+        <label class="theme">
+            Theme:
+            <select id="themeSelect" aria-label="Theme">
+                <option value="system">System</option>
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+            </select>
+        </label>
+
+        <span id="turnInfo"></span>
+    </div>
+
+    <div id="board" class="board"></div>
+
+    <div class="panel">
+        <div id="selection"></div>
+        <div id="hint" class="hint"></div>
+        <div id="error" class="error"></div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>

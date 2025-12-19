@@ -1,0 +1,215 @@
+/* ---------- Theme variables ---------- */
+
+/* Default (Light) */
+:root {
+    --bg: #ffffff;
+    --fg: #111111;
+    --muted: #555555;
+
+    --panel-bg: #ffffff;
+    --panel-border: #cfcfcf;
+
+    --cell-border: #cfcfcf;
+
+    --cell-light: #f3f3f3;
+    --cell-dark: #e2e2e2;
+
+    --p1: #cfe3ff;
+    --p2: #ffd6d6;
+
+    --block-bg: #333333;
+    --block-fg: #ffffff;
+
+    --error: #b00020;
+
+    --outline-from: #0066ff;
+    --outline-to: #00aa55;
+    --outline-arrow: #ff9900;
+
+    --btn-bg: #f5f5f5;
+    --btn-fg: #111111;
+    --btn-border: #cfcfcf;
+}
+
+/*
+  Dark: NOT pure black; use near-black background.
+  Also keep "content highlighted" by using higher-contrast panels + slightly brighter board cells.
+*/
+html[data-theme="dark"] {
+    --bg: #11151b;
+    /* near-black */
+    --fg: #e9eef7;
+    --muted: #b8c0cc;
+
+    --panel-bg: #1a2230;
+    /* clearly separated from bg */
+    --panel-border: #2d3a52;
+
+    --cell-border: #2a3448;
+
+    --cell-light: #253247;
+    /* brighter to avoid "everything black" */
+    --cell-dark: #1f2a3d;
+
+    --p1: #2e67b7;
+    --p2: #b44545;
+
+    --block-bg: #e6e6e6;
+    --block-fg: #111111;
+
+    --error: #ff6b6b;
+
+    --outline-from: #76b0ff;
+    --outline-to: #64e1a6;
+    --outline-arrow: #ffc06a;
+
+    --btn-bg: #1a2230;
+    --btn-fg: #e9eef7;
+    --btn-border: #2d3a52;
+}
+
+/* ---------- Base layout ---------- */
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: system-ui, sans-serif;
+    margin: 0;
+    padding: 16px;
+    background: var(--bg);
+    color: var(--fg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+}
+
+h1 {
+    margin: 0 0 12px 0;
+    text-align: center;
+}
+
+.toolbar {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+button {
+    background: var(--btn-bg);
+    color: var(--btn-fg);
+    border: 1px solid var(--btn-border);
+    padding: 6px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+button:hover {
+    filter: brightness(1.06);
+}
+
+button:active {
+    transform: translateY(1px);
+}
+
+.theme {
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.theme select {
+    background: var(--btn-bg);
+    color: var(--btn-fg);
+    border: 1px solid var(--btn-border);
+    padding: 4px 6px;
+    border-radius: 6px;
+}
+
+.panel {
+    margin-top: 12px;
+    max-width: 520px;
+    padding: 10px 12px;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+}
+
+.hint {
+    color: var(--muted);
+    margin-top: 6px;
+}
+
+.error {
+    color: var(--error);
+    margin-top: 6px;
+    min-height: 1.2em;
+}
+
+/* ---------- Board ---------- */
+
+.board {
+    display: grid;
+    grid-template-columns: repeat(10, 48px);
+    grid-template-rows: repeat(10, 48px);
+    gap: 2px;
+    width: fit-content;
+    padding: 6px;
+    background: var(--panel-bg);
+    /* board sits on a panel */
+    border: 1px solid var(--panel-border);
+    border-radius: 10px;
+    margin: 0 auto;
+}
+
+.cell {
+    width: 48px;
+    height: 48px;
+    border: 1px solid var(--cell-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+    cursor: pointer;
+    font-size: 11px;
+    border-radius: 6px;
+}
+
+/* chessboard-like background */
+.cell.light {
+    background: var(--cell-light);
+}
+
+.cell.dark {
+    background: var(--cell-dark);
+}
+
+.cell.p1 {
+    background: var(--p1);
+}
+
+.cell.p2 {
+    background: var(--p2);
+}
+
+.cell.block {
+    background: var(--block-bg);
+    color: var(--block-fg);
+}
+
+.cell.sel-from {
+    outline: 3px solid var(--outline-from);
+}
+
+.cell.sel-to {
+    outline: 3px solid var(--outline-to);
+}
+
+.cell.sel-arrow {
+    outline: 3px solid var(--outline-arrow);
+}
