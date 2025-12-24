@@ -40,3 +40,35 @@ def nn_value_and_logits(
     logits = net.policy_logit(feat_rep, x_actions_t).detach().cpu().numpy().astype(np.float32)
 
     return v, logits
+
+@torch.no_grad()
+def nn_logits_batched_from_feat(
+    net: AmazonsNet,
+    feat: torch.Tensor,               # (1,C,10,10)
+    actions: List[Action],
+    device: str = "cpu",
+    batch_size: int = 128,
+) -> np.ndarray:
+    """
+    Compute policy logits for many actions in batches to reduce memory.
+
+    Returns:
+      logits: np.ndarray shape (len(actions),) float32
+    """
+    if len(actions) == 0:
+        return np.zeros((0,), dtype=np.float32)
+
+    net.eval()
+    logits_out: List[np.ndarray] = []
+
+    # process in chunks
+    for i in range(0, len(actions), batch_size):
+        chunk = actions[i : i + batch_size]
+        x_actions = np.stack([encode_action(a) for a in chunk], axis=0)  # (b,3,10,10)
+        x_actions_t = torch.from_numpy(x_actions).to(device)
+
+        feat_rep = feat.repeat(x_actions_t.shape[0], 1, 1, 1)  # (b,C,10,10)
+        logits = net.policy_logit(feat_rep, x_actions_t).detach().cpu().numpy().astype(np.float32)
+        logits_out.append(logits)
+
+    return np.concatenate(logits_out, axis=0)

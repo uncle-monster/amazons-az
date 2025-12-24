@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+import torch
 import math
 import random
 from dataclasses import dataclass, field
@@ -10,6 +10,8 @@ import numpy as np
 from backend.engine.board import Board, P1, P2
 from backend.engine.nn_policy import nn_value_and_logits
 from backend.engine.rules import Action, apply_action, generate_legal_actions, is_terminal
+from backend.engine.nn_policy import nn_logits_batched_from_feat
+from backend.nn.encode import encode_state
 
 def root_value_from_visits(root: "Node") -> float:
     """
@@ -123,18 +125,43 @@ def expand_with_nn(
         return -1.0
 
     actions = generate_legal_actions(node.board, node.player_to_move)
+
+    net.eval()
+    x_board = torch.from_numpy(encode_state(node.board, node.player_to_move)).unsqueeze(0).to(device)  # (1,4,10,10)
+    feat = net.forward_features(x_board)  # (1,C,10,10)
+    v = net.value(feat).item()
+
     if len(actions) == 0:
         node.expanded = True
         node.children = {}
         return -1.0
 
-    # Optional: if huge branching, you may subsample BEFORE NN for speed
     if max_actions_expand is not None and len(actions) > max_actions_expand:
-        actions = rng.sample(actions, k=max_actions_expand)
+        # 分批计算所有 actions 的 logits（不会重复 trunk）
+        all_logits = nn_logits_batched_from_feat(
+            net=net,
+            feat=feat,
+            actions=actions,
+            device=device,
+            batch_size=64,   # CPU: 32/64 比较合适
+        )
+        k = int(max_actions_expand)
+        top_idx = np.argpartition(-all_logits, k - 1)[:k]
+        top_idx = top_idx[np.argsort(-all_logits[top_idx])]
 
-    v, logits = nn_value_and_logits(net, node.board, node.player_to_move, actions, device=device)
+        actions = [actions[int(i)] for i in top_idx]
+        logits = all_logits[top_idx].astype(np.float32)
+    else:
+        # 不需要 Top-K：直接对 actions 算 logits（也用 batched，统一路径）
+        logits = nn_logits_batched_from_feat(
+            net=net,
+            feat=feat,
+            actions=actions,
+            device=device,
+            batch_size=64,
+        )
+
     priors = softmax(logits)
-
     node.children = {a: Edge(P=float(p)) for a, p in zip(actions, priors)}
     node.expanded = True
     return float(v)
@@ -246,10 +273,30 @@ def mcts_puct_policy(
     if len(actions) == 0:
         raise RuntimeError("No legal moves (terminal).")
 
-    if max_actions_expand is not None and len(actions) > max_actions_expand:
-        actions = rng.sample(actions, k=max_actions_expand)
+    net.eval()
+    x_board = torch.from_numpy(encode_state(root.board, root.player_to_move)).unsqueeze(0).to(device)  # (1,4,10,10)
+    feat = net.forward_features(x_board)  # (1,C,10,10)
+    v_root = float(net.value(feat).item())
 
-    v_root, logits = nn_value_and_logits(net, root.board, root.player_to_move, actions, device=device)
+    # logits for ALL actions (batched, no repeated trunk)
+    all_logits = nn_logits_batched_from_feat(
+        net=net,
+        feat=feat,
+        actions=actions,
+        device=device,
+        batch_size=64,   # CPU 建议 32/64；根节点是热点
+    )
+
+    # optional Top-K pruning using logits
+    if max_actions_expand is not None and len(actions) > max_actions_expand:
+        k = int(max_actions_expand)
+        top_idx = np.argpartition(-all_logits, k - 1)[:k]
+        top_idx = top_idx[np.argsort(-all_logits[top_idx])]
+        actions = [actions[int(i)] for i in top_idx]
+        logits = all_logits[top_idx].astype(np.float32)
+    else:
+        logits = all_logits.astype(np.float32)
+
     priors = softmax(logits)
 
     if dirichlet_alpha is not None:
@@ -299,7 +346,7 @@ def mcts_puct_policy(
         pi = [0.0] * len(actions)
         pi[best_i] = 1.0
         return actions, pi, actions[best_i], float(v_root), float(v_mcts_root)
-
+    
     # pi ∝ counts^(1/tau)
     counts_t = np.power(counts, 1.0 / float(temperature))
     s = float(np.sum(counts_t))
@@ -311,3 +358,4 @@ def mcts_puct_policy(
     pi = pi_arr.tolist()
     chosen = rng.choices(actions, weights=pi, k=1)[0]
     return actions, pi, chosen, float(v_root), float(v_mcts_root)
+
