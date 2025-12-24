@@ -1,11 +1,9 @@
 from backend.nn.load import load_model
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-
 from backend.engine.board import Board, P1, P2
 from backend.engine.rules import Action, Pos, apply_action, is_legal_action, winner_if_game_over
 from backend.engine.mcts_puct import mcts_puct_search
-from backend.nn.load import load_model
 
 router = APIRouter()
 NET = load_model("checkpoints/model.pt", device="cpu")

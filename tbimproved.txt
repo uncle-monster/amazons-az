@@ -1,0 +1,9 @@
+随机选actions
+
+nn_policy:
+    代价（你迟早会遇到）
+如果 actions 很多（上千），你要做：
+encode_action A 次
+feat.repeat 复制出很大的张量
+policy_logit forward 一个大 batch
+所以你在 MCTS 里才需要 max_actions_expand 来截断，否则会很慢/内存爆。

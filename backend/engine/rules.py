@@ -189,7 +189,6 @@ def is_terminal(board: Board, player: int) -> bool:
     """
     return len(generate_legal_actions(board, player)) == 0
 
-from typing import Optional
 
 def winner_if_game_over(board: Board, next_player_to_move: int) -> Optional[int]:
     """
