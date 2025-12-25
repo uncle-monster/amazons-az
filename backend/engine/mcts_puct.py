@@ -194,7 +194,7 @@ def mcts_puct_search(
     device: str = "cpu",
     simulations: int = 200,
     c_puct: float = 1.5,
-    max_actions_expand: Optional[int] = 400,
+    max_actions_expand: Optional[int] = 200,
     seed: int = 0,
 ) -> Action:
     rng = random.Random(seed)
@@ -247,7 +247,7 @@ def mcts_puct_policy(
     device: str = "cpu",
     simulations: int = 80,
     c_puct: float = 1.5,
-    max_actions_expand: Optional[int] = 300,
+    max_actions_expand: Optional[int] = 200,
     seed: int = 0,
     temperature: float = 1.0,
     dirichlet_alpha: float | None = None,

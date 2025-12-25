@@ -1,22 +1,36 @@
+"""Self-play script with multiprocessing support.
+
+Behaves like the original single-process script by default.
+Set AZ_SELFPLAY_WORKERS > 1 to enable parallel generation.
+"""
 from __future__ import annotations
+
 import os
-import pickle
 import time
+import pickle
+import random
+import multiprocessing as mp
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional, Any, Tuple
 
 import numpy as np
 
+# ===========================================================================
+# Original Imports (Preserved)
+# ===========================================================================
 from backend.engine.board import Board, P1, P2
 from backend.engine.mcts_puct import mcts_puct_policy
 from backend.engine.rules import apply_action, is_terminal
 from backend.nn.encode import encode_action, encode_state
 from backend.nn.load import load_model
 
+# ===========================================================================
+# Game Logic & Helpers (Preserved from original)
+# ===========================================================================
 
 def other(player: int) -> int:
     return P2 if player == P1 else P1
-
 
 def play_one_game(
     net,
@@ -28,6 +42,7 @@ def play_one_game(
     dirichlet_epsilon: float = 0.30,
     seed: int = 0,
 ) -> List[Dict]:
+    """Runs a single self-play game."""
     board = Board.initial()
     player = P1
     samples: List[Dict] = []
@@ -43,6 +58,9 @@ def play_one_game(
 
         temperature = 1.0 if ply < temperature_moves else 1e-9
 
+        # Ensure seed changes per ply for MCTS noise if needed, 
+        # though usually MCTS relies on torch/numpy random state.
+        # We pass derived seeds just in case the backend uses them explicitly.
         actions, pi, chosen, v_root, v_mcts_root = mcts_puct_policy(
             board=board,
             player_to_move=player,
@@ -79,63 +97,186 @@ def play_one_game(
         ply += 1
 
 
-def main():
-    out_dir = Path("data")
+# ===========================================================================
+# Configuration Helpers
+# ===========================================================================
+
+def _get_config() -> Dict[str, Any]:
+    """Reads environment variables to configure the run."""
+    return {
+        "games": int(os.environ.get("AZ_SELFPLAY_GAMES", "20")),
+        "simulations": int(os.environ.get("AZ_SELFPLAY_SIMS", "80")),
+        "max_actions_expand": int(os.environ.get("AZ_SELFPLAY_MAXA", "300")),
+        "temperature_moves": int(os.environ.get("AZ_TEMP_MOVES", "20")),
+        "dirichlet_alpha": float(os.environ.get("AZ_DIR_ALPHA", "0.10")),
+        "dirichlet_epsilon": float(os.environ.get("AZ_DIR_EPS", "0.30")),
+        "device": os.environ.get("AZ_DEVICE", "cpu"),
+        "net_path": os.environ.get("AZ_MODEL_PATH", "checkpoints/model.pt"),
+        "out_dir": os.environ.get("AZ_SELFPLAY_OUT", "data"),
+    }
+
+def _seed_everything(seed: int) -> None:
+    random.seed(seed)
+    np.random.seed(seed % (2**32 - 1))
+    try:
+        import torch
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+    except ImportError:
+        pass
+
+# ===========================================================================
+# Single Process Logic (Original Main)
+# ===========================================================================
+
+def _run_single_process(cfg: Dict[str, Any], seed_base: int):
+    """The original main loop logic, running in the current process."""
+    out_dir = Path(cfg["out_dir"])
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # NEW: configurable via env
-    games = int(os.environ.get("AZ_SELFPLAY_GAMES", "20"))
-    simulations = int(os.environ.get("AZ_SELFPLAY_SIMS", "80"))
-    max_actions_expand = int(os.environ.get("AZ_SELFPLAY_MAXA", "300"))
-    temperature_moves = int(os.environ.get("AZ_TEMP_MOVES", "20"))
-    dirichlet_alpha = float(os.environ.get("AZ_DIR_ALPHA", "0.10"))
-    dirichlet_epsilon = float(os.environ.get("AZ_DIR_EPS", "0.30"))
-    device = os.environ.get("AZ_DEVICE", "cpu")
+    print("Loading model...", cfg["net_path"])
+    net = load_model(cfg["net_path"], device=cfg["device"])
 
-    net_path = os.environ.get("AZ_MODEL_PATH", "checkpoints/model.pt")
-    net = load_model(net_path, device=device)
-
-    # per-run seed (default: time-based; override with AZ_SEED for reproducibility)
-    env_seed = os.environ.get("AZ_SEED")
-    run_seed = int(env_seed) if env_seed is not None else int(time.time_ns() % 2**31)
-
-    print(
-        "self-play config:",
-        f"run_seed={run_seed}",
-        f"games={games}",
-        f"sims={simulations}",
-        f"maxA={max_actions_expand}",
-        f"temp_moves={temperature_moves}",
-        f"dir_alpha={dirichlet_alpha}",
-        f"dir_eps={dirichlet_epsilon}",
-        f"device={device}",
-        f"net={net_path}",
-        sep="\n - ",
-    )
+    print(f"Starting single-process self-play. Games={cfg['games']}, Device={cfg['device']}")
 
     all_samples: List[Dict] = []
     t0 = time.time()
-    for g in range(games):
+    
+    for g in range(cfg["games"]):
+        # Spread games apart in RNG space
+        game_seed = seed_base + g * 1000003
+        _seed_everything(game_seed)
+        
         samples = play_one_game(
             net=net,
-            device=device,
-            simulations=simulations,
-            max_actions_expand=max_actions_expand,
-            temperature_moves=temperature_moves,
-            dirichlet_alpha=dirichlet_alpha,
-            dirichlet_epsilon=dirichlet_epsilon,
-            seed=run_seed + g * 1000003,  # spread games apart in RNG space
+            device=cfg["device"],
+            simulations=cfg["simulations"],
+            max_actions_expand=cfg["max_actions_expand"],
+            temperature_moves=cfg["temperature_moves"],
+            dirichlet_alpha=cfg["dirichlet_alpha"],
+            dirichlet_epsilon=cfg["dirichlet_epsilon"],
+            seed=game_seed,
         )
         all_samples.extend(samples)
-        print(f"game {g}: samples={len(samples)}")
+        print(f"game {g+1}/{cfg['games']}: samples={len(samples)}")
 
     ts = time.strftime("%Y%m%d_%H%M%S")
-    out_path = out_dir / f"selfplay_{ts}_g{games}_puct_sims{simulations}.pkl"
+    out_path = out_dir / f"selfplay_{ts}_g{cfg['games']}_puct_sims{cfg['simulations']}.pkl"
     with open(out_path, "wb") as f:
         pickle.dump(all_samples, f)
 
-    print(f"saved: {out_path}  total_samples={len(all_samples)}  elapsed={time.time()-t0:.1f}s")
+    print(f"Saved: {out_path}  total_samples={len(all_samples)}  elapsed={time.time()-t0:.1f}s")
+    return str(out_path)
 
+# ===========================================================================
+# Parallel Process Logic
+# ===========================================================================
+
+@dataclass
+class _WorkerArgs:
+    worker_id: int
+    num_games: int
+    base_seed: int
+    # Config is re-read inside worker to ensure clean state
+    
+def _worker_main(args: _WorkerArgs) -> str:
+    """Entry point for a background worker process."""
+    
+    # 1. Setup Environment & Config
+    cfg = _get_config()
+    worker_seed = args.base_seed + (args.worker_id * 1_000_000)
+    _seed_everything(worker_seed)
+    
+    out_dir = Path(cfg["out_dir"])
+    out_dir.mkdir(parents=True, exist_ok=True)
+    
+    # 2. Load Model (Must be done INSIDE the worker for Windows spawn)
+    # We use 'cpu' for workers by default to avoid CUDA contention, 
+    # unless user explicitly manages AZ_DEVICE per worker.
+    # Typically self-play on CPU workers is safer unless you have MPS/CUDA handling.
+    net = load_model(cfg["net_path"], device=cfg["device"])
+    
+    all_samples = []
+    
+    # 3. Run Games
+    for g in range(args.num_games):
+        game_seed = worker_seed + g * 1003
+        _seed_everything(game_seed)
+        
+        samples = play_one_game(
+            net=net,
+            device=cfg["device"],
+            simulations=cfg["simulations"],
+            max_actions_expand=cfg["max_actions_expand"],
+            temperature_moves=cfg["temperature_moves"],
+            dirichlet_alpha=cfg["dirichlet_alpha"],
+            dirichlet_epsilon=cfg["dirichlet_epsilon"],
+            seed=game_seed,
+        )
+        all_samples.extend(samples)
+    
+    # 4. Save Output (Worker specific file)
+    ts = time.strftime("%Y%m%d_%H%M%S")
+    filename = f"selfplay_{ts}_w{args.worker_id}_g{args.num_games}.pkl"
+    out_path = out_dir / filename
+    
+    with open(out_path, "wb") as f:
+        pickle.dump(all_samples, f)
+        
+    return str(out_path)
+
+def _split_games(total: int, workers: int) -> List[int]:
+    base = total // workers
+    rem = total % workers
+    return [base + (1 if i < rem else 0) for i in range(workers)]
+
+# ===========================================================================
+# Main Entry Point
+# ===========================================================================
+
+def main():
+    # 1. Read Base Config
+    cfg = _get_config()
+    
+    # 2. Determine Mode
+    num_workers = int(os.environ.get("AZ_SELFPLAY_WORKERS", "1"))
+    env_seed = os.environ.get("AZ_SEED")
+    base_seed = int(env_seed) if env_seed is not None else int(time.time_ns() % 2**31)
+
+    print("self-play config:",
+          f"workers={num_workers}",
+          f"games={cfg['games']}",
+          f"sims={cfg['simulations']}",
+          f"device={cfg['device']}",
+          f"net={cfg['net_path']}",
+          sep="\n - ")
+
+    if num_workers <= 1:
+        # --- Single Process Mode ---
+        _run_single_process(cfg, base_seed)
+    else:
+        # --- Parallel Mode ---
+        if cfg['games'] <= 0:
+            raise ValueError("AZ_SELFPLAY_GAMES must be > 0")
+
+        # Split work
+        chunks = _split_games(cfg['games'], num_workers)
+        worker_args = [
+            _WorkerArgs(worker_id=i, num_games=chunks[i], base_seed=base_seed)
+            for i in range(num_workers) if chunks[i] > 0
+        ]
+
+        print(f"Spawning {len(worker_args)} workers to play {cfg['games']} games total...")
+        t0 = time.time()
+
+        # Use 'spawn' context for Windows/CUDA compatibility
+        ctx = mp.get_context("spawn")
+        with ctx.Pool(processes=len(worker_args)) as pool:
+            results = pool.map(_worker_main, worker_args)
+        
+        print(f"All workers finished. Elapsed={time.time()-t0:.1f}s")
+        print("Outputs:", results)
 
 if __name__ == "__main__":
     main()
