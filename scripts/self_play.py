@@ -5,7 +5,9 @@ Set AZ_SELFPLAY_WORKERS > 1 to enable parallel generation.
 """
 from __future__ import annotations
 
+
 import os
+import time
 import time
 import pickle
 import random
