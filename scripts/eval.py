@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import os
+# ·ÀÖ¹ÆÀ¹À½×¶ÎËÀËø
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
 import shutil
 from pathlib import Path
 

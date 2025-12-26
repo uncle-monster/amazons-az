@@ -21,8 +21,8 @@ def list_selfplay_pkls(data_dir: str = "data") -> List[str]:
 
 def load_replay(
     data_dir: str = "data",
-    last_n_files: int = 5,
-    max_samples: int = 20000,
+    last_n_files: int = 10,
+    max_samples: int = 50000,
     seed: int = 0,
 ) -> List[Dict]:
     files = list_selfplay_pkls(data_dir)

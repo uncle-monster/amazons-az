@@ -4,9 +4,10 @@ Behaves like the original single-process script by default.
 Set AZ_SELFPLAY_WORKERS > 1 to enable parallel generation.
 """
 from __future__ import annotations
-
-
 import os
+# 必须在 import torch 之前设置！
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
 import time
 import time
 import pickle
@@ -193,10 +194,7 @@ def _worker_main(args: _WorkerArgs) -> str:
     out_dir = Path(cfg["out_dir"])
     out_dir.mkdir(parents=True, exist_ok=True)
     
-    # 2. Load Model (Must be done INSIDE the worker for Windows spawn)
-    # We use 'cpu' for workers by default to avoid CUDA contention, 
-    # unless user explicitly manages AZ_DEVICE per worker.
-    # Typically self-play on CPU workers is safer unless you have MPS/CUDA handling.
+    # 2. Load Model
     net = load_model(cfg["net_path"], device=cfg["device"])
     
     all_samples = []
@@ -205,7 +203,11 @@ def _worker_main(args: _WorkerArgs) -> str:
     for g in range(args.num_games):
         game_seed = worker_seed + g * 1003
         _seed_everything(game_seed)
+
+        # 记录开始时间
+        t_start = time.time()
         
+        # 执行游戏 (只调用一次！)
         samples = play_one_game(
             net=net,
             device=cfg["device"],
@@ -217,8 +219,13 @@ def _worker_main(args: _WorkerArgs) -> str:
             seed=game_seed,
         )
         all_samples.extend(samples)
+        
+        # 打印进度
+        duration = time.time() - t_start
+        print(f"[Worker {args.worker_id}] Finished game {g+1}/{args.num_games} "
+              f"({len(samples)} moves) in {duration:.1f}s", flush=True)
     
-    # 4. Save Output (Worker specific file)
+    # 4. Save Output
     ts = time.strftime("%Y%m%d_%H%M%S")
     filename = f"selfplay_{ts}_w{args.worker_id}_g{args.num_games}.pkl"
     out_path = out_dir / filename
