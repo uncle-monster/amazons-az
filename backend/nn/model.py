@@ -5,7 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class ResBlock(nn.Module):
-    """标准的残差块: Conv -> BN -> ReLU -> Conv -> BN -> Add -> ReLU"""
+    # """标准的残差块: Conv -> BN -> ReLU -> Conv -> BN -> Add -> ReLU"""
     def __init__(self, channels: int):
         super().__init__()
         self.conv1 = nn.Conv2d(channels, channels, 3, padding=1, bias=False)
@@ -75,21 +75,21 @@ class AmazonsNet(nn.Module):
         )
 
     def forward_features(self, x_board: torch.Tensor) -> torch.Tensor:
-        """提取棋盘特征，供后续多次使用"""
+        # """提取棋盘特征，供后续多次使用"""
         x = self.conv_input(x_board)
         x = self.res_tower(x)
         return x
 
     def value(self, feat: torch.Tensor) -> torch.Tensor:
-        """根据特征评估胜率"""
+        # """根据特征评估胜率"""
         return self.v_head(feat).squeeze(-1)
 
     def policy_logit(self, feat: torch.Tensor, x_action: torch.Tensor) -> torch.Tensor:
-        """
-        评估某个动作的好坏
-        feat: 来自 forward_features 的缓存特征 (B, 64, 10, 10)
-        x_action: 动作特征 (B, 3, 10, 10)
-        """
+        # """
+        # 评估某个动作的好坏
+        # feat: 来自 forward_features 的缓存特征 (B, 64, 10, 10)
+        # x_action: 动作特征 (B, 3, 10, 10)
+        # """
         # 拼接棋盘特征和动作特征
         z = torch.cat([feat, x_action], dim=1) 
         z = self.p_conv(z)
