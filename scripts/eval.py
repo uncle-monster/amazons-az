@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import os
-# 防止评估阶段死锁
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
+# =================================================================
+# 【关键修改】评估阶段是单进程，必须开启多核加速！
+# 不要设为 "1"，否则会慢死。建议设为 4 到 8 之间。
+# =================================================================
+os.environ["OMP_NUM_THREADS"] = "6"
+os.environ["MKL_NUM_THREADS"] = "6"
+
 import shutil
 from pathlib import Path
 
@@ -48,16 +52,10 @@ def play_game(net_p1, net_p2, sims: int, max_actions: int, seed: int) -> int:
 def main() -> int:
     sims = int(os.environ.get("AZ_EVAL_SIMS", "80"))
     max_actions = int(os.environ.get("AZ_EVAL_MAXA", "300"))
-
     games = int(os.environ.get("AZ_EVAL_GAMES", "20"))
-    extend_games = int(os.environ.get("AZ_EVAL_EXTEND_GAMES", "40"))
-    gray_low = float(os.environ.get("AZ_EVAL_GRAY_LOW", "0.47"))
-    gray_high = float(os.environ.get("AZ_EVAL_GRAY_HIGH", "0.57"))
-
-    win_threshold = float(os.environ.get("AZ_GATE", "0.55"))
-
-    if extend_games <= games:
-        extend_games = games  # disable extend if misconfigured
+    
+    # 设定胜率阈值，默认为 0.60
+    win_threshold = float(os.environ.get("AZ_GATE", "0.60"))
 
     ckpt_dir = Path("checkpoints")
     best_path = ckpt_dir / "model_best.pt"
@@ -111,32 +109,16 @@ def main() -> int:
 
         return cand_wins, n_games
 
-    # --- stage 1 ---
-    cand_wins_1, played_1 = run_match(games, start_i=0)
-    winrate_1 = cand_wins_1 / played_1
+    # --- 运行对局 (不再分阶段) ---
+    cand_wins, played = run_match(games, start_i=0)
+    winrate = cand_wins / played
+    
     print(
-        f"stage1: candidate wins: {cand_wins_1}/{played_1}  "
-        f"winrate={winrate_1:.3f}  threshold={win_threshold:.2f}"
-    )
-
-    # --- stage 2 (optional extend) ---
-    cand_wins_total = cand_wins_1
-    played_total = played_1
-
-    in_gray = (gray_low <= winrate_1 <= gray_high) and (extend_games > games)
-    if in_gray:
-        more = extend_games - games
-        print(f"gray-zone hit ({gray_low:.2f}..{gray_high:.2f}); extending eval by {more} games (total={extend_games})")
-        cand_wins_2, played_2 = run_match(more, start_i=games)
-        cand_wins_total += cand_wins_2
-        played_total += played_2
-
-    winrate = cand_wins_total / played_total
-    print(
-        f"final: candidate wins: {cand_wins_total}/{played_total}  "
+        f"final: candidate wins: {cand_wins}/{played}  "
         f"winrate={winrate:.3f}  threshold={win_threshold:.2f}"
     )
 
+    # 只要胜率 >= 0.60 就接受
     if winrate >= win_threshold:
         # promote
         cand_path.replace(best_path)
